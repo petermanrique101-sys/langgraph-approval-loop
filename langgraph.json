@@ -1,0 +1,8 @@
+{
+  "dependencies": ["."],
+  "graphs": {
+    "dev": "./approval_loop/server.py:dev",
+    "nutrishop": "./approval_loop/server.py:nutrishop"
+  },
+  "env": ".env"
+}

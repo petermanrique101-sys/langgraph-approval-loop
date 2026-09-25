@@ -2,6 +2,7 @@
 
   python run.py --thread demo1 "clean the build directory"
   python run.py --thread demo1 --resume
+  python run.py --scenario nutrishop --thread reorder1 "restock whatever is low"
 """
 
 import argparse
@@ -14,6 +15,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
 from approval_loop.graph import build_graph
+from approval_loop.scenarios import load
 
 DB = Path(__file__).resolve().parent / "checkpoints.db"
 
@@ -39,13 +41,14 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--thread", required=True)
     ap.add_argument("--profile", choices=["normal", "autonomous"], default="normal")
+    ap.add_argument("--scenario", choices=["dev", "nutrishop"], default="dev")
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("prompt", nargs="?")
     args = ap.parse_args()
     config = {"configurable": {"thread_id": args.thread}}
 
     with SqliteSaver.from_conn_string(str(DB)) as checkpointer:
-        graph = build_graph(checkpointer=checkpointer)
+        graph = build_graph(checkpointer=checkpointer, scenario=load(args.scenario))
 
         if args.resume:
             snapshot = graph.get_state(config)

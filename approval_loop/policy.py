@@ -7,6 +7,7 @@ is replayable, which is also what makes it testable without a model.
 import hashlib
 import json
 import re
+from dataclasses import dataclass, field
 
 from .state import Approval, Decision, Profile
 
@@ -64,22 +65,25 @@ def destructive_shell_reason(command: str) -> str | None:
     return None
 
 
-# --- 4.2 Action-aware table ---------------------------------------------------
+# --- 4.2 What is gated, per scenario -------------------------------------------
 #
-# Tools gated as a whole, and tools whose risk varies per `action` argument.
-# A family tool's static tier is its worst NON-destructive action; the
-# destructive actions are listed here so collapsing a family into one tool
-# never weakens its gate. The demo has no family tool; the table is the
-# design point, and the tests exercise it.
-GATED_TOOLS: dict[str, str] = {
-    "write_file": "writes a file",
-}
+# The graph is the same for every scenario; only this table changes. That is
+# the point of the port: the framework supplies interrupt() and persistence,
+# the customer-specific part is which calls are risky and why.
+@dataclass(frozen=True)
+class Rules:
+    # Gated as a whole: `ask` under the normal profile, `allow` under autonomous.
+    gated: dict[str, str] = field(default_factory=dict)
+    # Irreversible regardless of profile: money leaves, data is gone, a message
+    # is sent. Always `ask` (an explicit approval of the exact args is honored).
+    irreversible: dict[str, str] = field(default_factory=dict)
+    # Tools whose `command` string is scanned against the shell-text floor.
+    shell: frozenset[str] = frozenset()
+    # Family tools whose risk varies per `action` argument. A family's static
+    # tier is its worst NON-destructive action; the destructive actions are
+    # listed here so collapsing a family into one tool never weakens its gate.
+    actions: dict[str, dict[str, str]] = field(default_factory=dict)
 
-DESTRUCTIVE_TOOL_ACTIONS: dict[str, dict[str, str]] = {
-    # e.g. "protocol": {"delete": "deletes a saved protocol", "prune": "bulk-archives unused protocols"}
-}
-
-SHELL_TOOLS = {"bash"}
 
 # --- 4.3 Profile and fingerprints ---------------------------------------------
 
@@ -104,16 +108,24 @@ def decide(
     profile: Profile,
     approvals: list[Approval],
     now: float,
+    rules: Rules,
 ) -> Decision:
     fp = fingerprint(tool_name, args)
 
-    # Irreversible floor: reclassified above the profile. Never auto-allowed,
-    # but an explicit approval of these exact args is honored (see below).
-    floor = destructive_shell_reason(args.get("command", "")) if tool_name in SHELL_TOOLS else None
-    action_reason = DESTRUCTIVE_TOOL_ACTIONS.get(tool_name, {}).get(str(args.get("action", "")))
-    gated_reason = GATED_TOOLS.get(tool_name)
+    # The irreversible floor sits above the profile: a shell command that
+    # destroys a tree, a tool that sends money, a destructive family action.
+    floor: str | None = None
+    if tool_name in rules.shell:
+        hit = destructive_shell_reason(str(args.get("command", "")))
+        floor = f"irreversible: {hit}" if hit else None
+    if floor is None and tool_name in rules.irreversible:
+        floor = f"irreversible: {rules.irreversible[tool_name]}"
+    if floor is None:
+        action = rules.actions.get(tool_name, {}).get(str(args.get("action", "")))
+        floor = f"destructive action: {action}" if action else None
+    gated_reason = rules.gated.get(tool_name)
 
-    if floor is None and action_reason is None and gated_reason is None:
+    if floor is None and gated_reason is None:
         return Decision(verdict="allow", reason="not gated", fingerprint=fp)
 
     # Prior verdicts on these exact args, newest first.
@@ -132,9 +144,7 @@ def decide(
         break  # a stale denial; ask again
 
     if floor is not None:
-        return Decision(verdict="ask", reason=f"irreversible: {floor}", fingerprint=fp)
-    if action_reason is not None:
-        return Decision(verdict="ask", reason=f"destructive action: {action_reason}", fingerprint=fp)
+        return Decision(verdict="ask", reason=floor, fingerprint=fp)
     if profile == "autonomous":
         return Decision(verdict="allow", reason="autonomous profile", fingerprint=fp)
     return Decision(verdict="ask", reason=gated_reason, fingerprint=fp)

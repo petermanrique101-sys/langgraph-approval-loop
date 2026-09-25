@@ -44,7 +44,3 @@ def bash(command: str) -> str:
     )
     out = (proc.stdout + proc.stderr).strip()[:OUTPUT_LIMIT]
     return f"exit {proc.returncode}\n{out}" if out else f"exit {proc.returncode}"
-
-
-TOOLS = [read_file, write_file, bash]
-TOOLS_BY_NAME = {t.name: t for t in TOOLS}

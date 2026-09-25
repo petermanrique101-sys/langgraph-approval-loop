@@ -1,15 +1,17 @@
-"""The eval set: (profile, tool, args) -> expected decision. No model in the loop."""
+﻿"""The eval set: (profile, tool, args) -> expected decision. No model in the loop."""
 
 import pytest
 
-from approval_loop.policy import DECLINE_SUPPRESS_SECONDS, DESTRUCTIVE_TOOL_ACTIONS, decide, fingerprint
+from approval_loop.policy import DECLINE_SUPPRESS_SECONDS, Rules, decide, fingerprint
+from approval_loop.scenarios.dev import SCENARIO as DEV
+from approval_loop.scenarios.nutrishop import SCENARIO as SHOP
 from approval_loop.state import Approval
 
 NOW = 1_000_000.0
 
 
-def verdict(profile, tool, args, approvals=(), now=NOW):
-    return decide(tool, args, profile, list(approvals), now)["verdict"]
+def verdict(profile, tool, args, approvals=(), now=NOW, rules=DEV.rules):
+    return decide(tool, args, profile, list(approvals), now, rules)["verdict"]
 
 
 # --- must card, profile normal --------------------------------------------------
@@ -74,7 +76,7 @@ def test_fingerprint_ignores_key_order():
 
 def test_recent_denial_is_suppressed_with_machine_reason():
     args = {"command": "rm -rf build"}
-    d = decide("bash", args, "normal", [denied("bash", args, NOW - 40, "keep the cache")], NOW)
+    d = decide("bash", args, "normal", [denied("bash", args, NOW - 40, "keep the cache")], NOW, DEV.rules)
     assert d["verdict"] == "deny"
     assert d["reason"] == "suppressed: declined 40s ago (keep the cache)"
 
@@ -111,9 +113,29 @@ def test_floor_misses(command):
 
 
 def test_action_table_reclassifies_a_family_tool():
-    DESTRUCTIVE_TOOL_ACTIONS["protocol"] = {"delete": "deletes a saved protocol"}
-    try:
-        assert verdict("autonomous", "protocol", {"action": "delete", "name": "x"}) == "ask"
-        assert verdict("autonomous", "protocol", {"action": "list"}) == "allow"
-    finally:
-        del DESTRUCTIVE_TOOL_ACTIONS["protocol"]
+    rules = Rules(actions={"protocol": {"delete": "deletes a saved protocol"}})
+    assert verdict("autonomous", "protocol", {"action": "delete", "name": "x"}, rules=rules) == "ask"
+    assert verdict("autonomous", "protocol", {"action": "list"}, rules=rules) == "allow"
+
+
+# --- the NutriShop scenario: same policy, business tools -------------------------------
+def test_shop_reading_stock_is_free():
+    assert verdict("normal", "read_inventory", {}, rules=SHOP.rules) == "allow"
+
+
+def test_shop_draft_is_gated_by_profile():
+    args = {"supplier": "Optimum", "lines": [{"sku": "WHEY-CHOC-5LB", "qty": 12}]}
+    assert verdict("normal", "draft_purchase_order", args, rules=SHOP.rules) == "ask"
+    assert verdict("autonomous", "draft_purchase_order", args, rules=SHOP.rules) == "allow"
+
+
+def test_shop_sending_money_always_cards():
+    d = decide("send_purchase_order", {"po_id": "PO-1"}, "autonomous", [], NOW, SHOP.rules)
+    assert d["verdict"] == "ask"
+    assert d["reason"] == "irreversible: commits the store to paying the supplier"
+
+
+def test_shop_approving_one_po_does_not_approve_another():
+    prior = [approved("send_purchase_order", {"po_id": "PO-1"})]
+    assert verdict("normal", "send_purchase_order", {"po_id": "PO-1"}, prior, rules=SHOP.rules) == "allow"
+    assert verdict("normal", "send_purchase_order", {"po_id": "PO-2"}, prior, rules=SHOP.rules) == "ask"

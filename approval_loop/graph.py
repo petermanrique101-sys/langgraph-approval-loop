@@ -16,14 +16,8 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
 from .policy import decide
+from .scenarios import Scenario, load
 from .state import Approval, State
-from .tools import TOOLS, TOOLS_BY_NAME
-
-SYSTEM = (
-    "You are a careful coding assistant working inside a sandboxed workspace. "
-    "Use the tools to do what the user asks. Some tool calls need the user's approval; "
-    "if one is denied, read the reason in the tool result and adapt instead of retrying it."
-)
 
 
 def _after_tool(pending: list[dict]) -> Literal["policy", "call_model"]:
@@ -35,12 +29,15 @@ def _tool_message(call: dict, content: str, *, error: bool = False) -> ToolMessa
     return ToolMessage(content=content, tool_call_id=call["id"], name=call["name"], status="error" if error else "success")
 
 
-def build_graph(model=None, checkpointer=None):
+def build_graph(model=None, checkpointer=None, scenario: Scenario | None = None):
+    scenario = scenario or load("dev")
     model = model or init_chat_model(os.environ.get("MODEL", "ollama:qwen3.6:27b"))
-    model_with_tools = model.bind_tools(TOOLS)
+    model_with_tools = model.bind_tools(scenario.tools)
+    tools_by_name = {t.name: t for t in scenario.tools}
+    rules = scenario.rules
 
     def call_model(state: State):
-        messages = [SystemMessage(SYSTEM), *state["messages"]]
+        messages = [SystemMessage(scenario.system_prompt), *state["messages"]]
         ai = model_with_tools.invoke(messages)
         return {"messages": [ai], "pending": list(ai.tool_calls), "decision": None}
 
@@ -49,7 +46,7 @@ def build_graph(model=None, checkpointer=None):
 
     def policy(state: State) -> Command[Literal["approve", "execute", "policy", "call_model"]]:
         call = state["pending"][0]
-        decision = decide(call["name"], call["args"], state["profile"], state["approvals"], now=time.time())
+        decision = decide(call["name"], call["args"], state["profile"], state["approvals"], time.time(), rules)
         if decision["verdict"] == "deny":
             rest = state["pending"][1:]
             return Command(
@@ -90,7 +87,7 @@ def build_graph(model=None, checkpointer=None):
     def execute(state: State) -> Command[Literal["policy", "call_model"]]:
         call = state["pending"][0]
         try:
-            result = TOOLS_BY_NAME[call["name"]].invoke(call["args"])
+            result = tools_by_name[call["name"]].invoke(call["args"])
             msg = _tool_message(call, str(result))
         except Exception as e:  # the model should see tool failures, not the process
             msg = _tool_message(call, f"{type(e).__name__}: {e}", error=True)
