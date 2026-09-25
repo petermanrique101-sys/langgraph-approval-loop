@@ -48,6 +48,30 @@ def read_inventory() -> str:
     return INVENTORY.read_text(encoding="utf-8")
 
 
+def low_stock() -> dict[str, list[dict]]:
+    """Items at or below their reorder point, grouped by supplier, at their reorder quantity."""
+    seed()
+    plan: dict[str, list[dict]] = {}
+    for row in csv.DictReader(INVENTORY.open(encoding="utf-8")):
+        if int(row["on_hand"]) <= int(row["reorder_at"]):
+            plan.setdefault(row["supplier"], []).append(
+                {"sku": row["sku"], "name": row["name"], "qty": int(row["reorder_qty"])})
+    return plan
+
+
+@tool
+def find_low_stock() -> str:
+    """What to reorder right now: items at or below their reorder point, grouped by supplier,
+    each with the exact quantity to order. Draft one PO per supplier with exactly these lines."""
+    plan = low_stock()
+    if not plan:
+        return "Nothing is at or below its reorder point. No orders needed."
+    return json.dumps(
+        [{"supplier": s, "lines": [{"sku": l["sku"], "qty": l["qty"]} for l in lines],
+          "items": [f"{l['qty']} x {l['name']}" for l in lines]} for s, lines in plan.items()],
+        indent=2)
+
+
 @tool
 def draft_purchase_order(supplier: str, lines: list[dict]) -> str:
     """Write a draft PO for one supplier. `lines` is a list of {"sku": str, "qty": int}. Returns the PO id and total."""
@@ -101,12 +125,17 @@ def describe(tool_name: str, args: dict) -> str:
 SCENARIO = Scenario(
     name="nutrishop",
     system_prompt=(
-        "You are the reorder assistant for NutriShop, a supplement store. Read the inventory, "
-        "find items at or below their reorder point, draft one purchase order per supplier for the "
-        "reorder quantities, and send each PO. Sending a PO needs the owner's approval; if one is "
-        "denied, read the reason in the tool result and adapt instead of retrying it."
+        "You are the reorder assistant for NutriShop, a supplement store. To restock: "
+        "1) call find_low_stock; it returns exactly what to order, do not add or change items or quantities. "
+        "2) draft one purchase order per supplier with those lines. "
+        "3) send each drafted PO by calling send_purchase_order. The owner approves or denies each send "
+        "on an approval card, so do not ask for permission in chat; just call the tool. "
+        "If a send is denied, read the reason in the tool result, leave that PO as a draft, and do not retry it. "
+        "4) finish with a short summary table: supplier, PO, items, total, status. "
+        "For any PO the owner held, put the owner's reason in its status. "
+        "Use read_inventory only to answer questions about stock levels."
     ),
-    tools=[read_inventory, draft_purchase_order, send_purchase_order],
+    tools=[find_low_stock, read_inventory, draft_purchase_order, send_purchase_order],
     rules=Rules(
         gated={"draft_purchase_order": "writes a purchase order"},
         irreversible={"send_purchase_order": "commits the store to paying the supplier"},

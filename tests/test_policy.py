@@ -121,6 +121,7 @@ def test_action_table_reclassifies_a_family_tool():
 # --- the NutriShop scenario: same policy, business tools -------------------------------
 def test_shop_reading_stock_is_free():
     assert verdict("normal", "read_inventory", {}, rules=SHOP.rules) == "allow"
+    assert verdict("normal", "find_low_stock", {}, rules=SHOP.rules) == "allow"
 
 
 def test_shop_draft_is_gated_by_profile():
