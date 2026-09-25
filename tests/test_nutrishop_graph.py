@@ -39,8 +39,10 @@ def test_send_cards_after_autonomous_draft_and_denial_reason_lands(tmp_path, mon
     card = result["__interrupt__"][0].value
     assert card["tool"] == "send_purchase_order"
     assert card["reason"] == "irreversible: commits the store to paying the supplier"
+    assert card["question"] == (f"Send {po_id} to Optimum for $528.00? "
+                                "Items: 12 x Whey Protein Chocolate 5lb. Once sent, the store owes the supplier.")
 
-    final = graph2.invoke(Command(resume={"approved": False, "reason": "wait for Friday's cash"}), CONFIG)
+    final = graph2.invoke(Command(resume="no, wait for Friday's cash"), CONFIG)
     denial = [m for m in final["messages"] if isinstance(m, ToolMessage)][-1]
     assert denial.content == "Denied by the user: wait for Friday's cash"
     assert (tmp_path / "orders" / f"{po_id}.json").read_text().count('"status": "draft"') == 1

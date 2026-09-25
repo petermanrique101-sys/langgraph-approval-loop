@@ -11,7 +11,7 @@ Remove-Item checkpoints.db*, workspace\nutrishop -Recurse -Force -ErrorAction Si
 New-Item -ItemType Directory -Force workspace\build | Out-Null; "junk" | Set-Content workspace\build\out.o
 ```
 
-`MODEL`, `ANTHROPIC_API_KEY` and the three `LANGSMITH_*` variables must be set at User scope (they are). Open a fresh terminal so it sees them.
+`MODEL`, `ANTHROPIC_API_KEY` and the three `LANGSMITH_*` variables (`LANGSMITH_TRACING=true`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT=approval-loop`) must be set at User scope. Open a fresh terminal after setting them so it sees them.
 
 ## Clip 1: kill and resume (terminal)
 
@@ -35,7 +35,7 @@ Optional second take for the negative: a new thread, `n`, and a reason like `kee
 langgraph dev
 ```
 
-It opens `https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024`. Pick the **nutrishop** graph. In the input panel set `profile` to `autonomous`, add a human message `restock whatever is low`, and submit. Watch `call_model → policy → execute` run for the drafts, then the graph stop at `approve` with the card in the state panel. Answer the interrupt in the panel with `{"approved": true}` for the first, `{"approved": false, "reason": "Ghost raised prices last month, hold that one until I call them"}` for the second, `{"approved": true}` for the third.
+It opens `https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024`. Pick the **nutrishop** graph (check the dropdown next to "Studio /"; the dev graph draws the same boxes). In the input panel set `profile` to `autonomous`, add a human message `restock whatever is low`, and submit. Watch `call_model → policy → execute` run for the drafts, then the graph stop at `approve`. The card's `question` reads in plain English, e.g. "Send PO-…-OPT-001 to Optimum for $528.00? Items: 12 x Whey Protein Chocolate 5lb. Once sent, the store owes the supplier." Type the answer in the "Provide a value to resume" box on the right (replace the `""`) and click **Resume**, not Submit: `yes` for Optimum, `no, Ghost raised prices last month, hold that one until I call them` for Ghost, `yes` for NOW. Read the supplier on each card before answering; the order can vary. Avoid a colon followed by a space in the reason (the box parses YAML). The structured form `{"approved": false, "reason": "..."}` still works.
 
 The final message should be a table with two sent and one on hold, with your reason in it.
 

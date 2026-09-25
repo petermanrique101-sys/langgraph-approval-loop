@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.types import Command
 
+from approval_loop.answers import parse_answer
 from approval_loop.graph import build_graph
 from approval_loop.scenarios import load
 
@@ -22,6 +23,7 @@ DB = Path(__file__).resolve().parent / "checkpoints.db"
 
 def print_card(card: dict) -> None:
     print("\n=== APPROVAL NEEDED ===")
+    print(card["question"])
     print(f"tool:        {card['tool']}")
     print(f"args:        {json.dumps(card['args'])}")
     print(f"reason:      {card['reason']}")
@@ -30,11 +32,10 @@ def print_card(card: dict) -> None:
 
 
 def ask_human() -> dict:
-    answer = input("approve? [y/N] ").strip().lower()
-    if answer == "y":
-        return {"approved": True}
-    reason = input("reason (optional): ").strip()
-    return {"approved": False, "reason": reason or None}
+    parsed = parse_answer(input("approve? (yes / no, reason) "))
+    if not parsed["approved"] and not parsed["reason"]:
+        parsed["reason"] = input("reason (optional): ").strip() or None
+    return parsed
 
 
 def main() -> int:

@@ -37,7 +37,7 @@ Two scenarios ship: `dev` (read a file, write a file, run a shell command; the s
 
 ```bash
 pip install -e ".[dev]"
-export MODEL=anthropic:claude-sonnet-4-6   # or any init_chat_model id, e.g. ollama:qwen3.6:27b
+export MODEL=anthropic:claude-sonnet-5   # or any init_chat_model id, e.g. ollama:qwen3.6:27b
 export ANTHROPIC_API_KEY=...
 
 python run.py --thread demo1 "delete the build directory in the workspace using bash"
@@ -67,7 +67,9 @@ Studio and the chat UI: `pip install "langgraph-cli[inmem]"` then `langgraph dev
 Two bugs from the runtime I wrote cannot exist here.
 
 1. **An approval wait that lived inside a tool timeout.** My runtime waited for the human *inside* the tool call, so a 30-second tool timeout around a five-minute approval card made every card on a slow page unanswerable. `interrupt()` exits the run. There is no tool in flight while the human thinks; the process can even be gone. The bug has no place to live.
-2. **Denial reasons were inferred, not carried.** My runtime stamped machine denials as "declined" and lost the human's words. Here the resume payload is `{"approved": false, "reason": "..."}` and the reason lands in the tool message verbatim, and the model acts on it (see the NutriShop run above). The framework made the right design the easy one.
+2. **Denial reasons were inferred, not carried.** My runtime stamped machine denials as "declined" and lost the human's words. Here the owner answers the card in plain words (`no, Ghost raised prices last month`), the reason lands in the tool message verbatim, and the model acts on it (see the NutriShop run above). The framework made the right design the easy one.
+
+The card itself is written for the owner, not the developer: each scenario builds a one-line question from the call's own args in code (`Send PO-…-OPT-001 to Optimum for $528.00? Items: 12 x Whey Protein Chocolate 5lb.`), so the model cannot misstate what is about to run. Anything that isn't a clear yes is a no; an unclear answer never sends money.
 
 A third, smaller one: I rebuilt "persist the operation so a pause survives a restart" myself, over weeks. The checkpointer is one line and it also gives me `get_state()` to inspect the pending card from a fresh process, which is exactly what `--resume` does.
 

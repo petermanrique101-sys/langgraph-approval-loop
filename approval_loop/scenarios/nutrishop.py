@@ -73,6 +73,31 @@ def send_purchase_order(po_id: str) -> str:
     return f"{po_id} sent to {po['supplier']} for ${po['total']:,.2f}"
 
 
+def _names() -> dict[str, str]:
+    if not INVENTORY.exists():
+        return {}
+    return {row["sku"]: row["name"] for row in csv.DictReader(INVENTORY.open(encoding="utf-8"))}
+
+
+def _items(lines: list[dict]) -> str:
+    names = _names()
+    return ", ".join(f"{line.get('qty')} x {names.get(line.get('sku'), line.get('sku'))}" for line in lines)
+
+
+def describe(tool_name: str, args: dict) -> str:
+    if tool_name == "send_purchase_order":
+        po_id = args.get("po_id", "?")
+        path = ORDERS / f"{po_id}.json"
+        if not path.exists():
+            return f"Send {po_id}? (No draft with that number exists; sending will fail.)"
+        po = json.loads(path.read_text(encoding="utf-8"))
+        return (f"Send {po_id} to {po['supplier']} for ${po['total']:,.2f}? "
+                f"Items: {_items(po['lines'])}. Once sent, the store owes the supplier.")
+    if tool_name == "draft_purchase_order":
+        return f"Draft a purchase order to {args.get('supplier', '?')} for {_items(args.get('lines', []))}? Nothing is sent yet."
+    return f"Run {tool_name}?"
+
+
 SCENARIO = Scenario(
     name="nutrishop",
     system_prompt=(
@@ -86,4 +111,5 @@ SCENARIO = Scenario(
         gated={"draft_purchase_order": "writes a purchase order"},
         irreversible={"send_purchase_order": "commits the store to paying the supplier"},
     ),
+    describe=describe,
 )

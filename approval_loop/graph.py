@@ -15,6 +15,7 @@ from langchain_core.messages import SystemMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Command, interrupt
 
+from .answers import parse_answer
 from .policy import decide
 from .scenarios import Scenario, load
 from .state import Approval, State
@@ -62,13 +63,16 @@ def build_graph(model=None, checkpointer=None, scenario: Scenario | None = None)
         call = state["pending"][0]
         decision = state["decision"]
         answer = interrupt({
+            "question": scenario.describe(call["name"], call["args"]),
+            "answer_with": "yes, or no plus a reason (e.g. no, wait until Friday)",
             "tool": call["name"],
             "args": call["args"],
             "reason": decision["reason"],
             "fingerprint": decision["fingerprint"],
         })
-        approved = bool(answer.get("approved"))
-        human_reason = answer.get("reason") or None
+        parsed = parse_answer(answer)
+        approved = parsed["approved"]
+        human_reason = parsed["reason"]
         record = Approval(
             fingerprint=decision["fingerprint"],
             verdict="approved" if approved else "denied",

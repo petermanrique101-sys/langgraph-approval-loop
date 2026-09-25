@@ -4,6 +4,16 @@ from ..policy import Rules
 from ..tools import bash, read_file, write_file
 from . import Scenario
 
+
+def describe(tool_name: str, args: dict) -> str:
+    if tool_name == "bash":
+        return f"Run this command in the workspace? {args.get('command', '')}"
+    if tool_name == "write_file":
+        return f"Write {len(str(args.get('content', '')))} characters to {args.get('path', '?')}?"
+    if tool_name == "read_file":
+        return f"Read {args.get('path', '?')}?"
+    return f"Run {tool_name}?"
+
 SCENARIO = Scenario(
     name="dev",
     system_prompt=(
@@ -16,4 +26,5 @@ SCENARIO = Scenario(
         gated={"write_file": "writes a file"},
         shell=frozenset({"bash"}),
     ),
+    describe=describe,
 )
