@@ -6,3 +6,4 @@ checkpoints.db*
 workspace/
 .env
 .pytest_cache/
+.langgraph_api/
