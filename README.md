@@ -2,8 +2,6 @@
 
 An agent that pauses before a risky tool call, shows a human an approval card, survives being killed while it waits, and picks up at the same card when restarted. Built on LangGraph's `interrupt()` and a SQLite checkpointer. The policy that decides what is risky was ported from an agent runtime I wrote by hand ([Local Agent X](https://github.com/Local-Agent-X/Local-Agent-X)), so the README ends with an honest comparison of the two.
 
-> **Recording:** _coming — kill-and-resume in the terminal, then the NutriShop reorder agent in LangGraph Studio._
-
 ## The graph
 
 ```mermaid
@@ -92,7 +90,7 @@ For the loop itself, LangGraph. I would not write the checkpointer or the interr
 `tests/test_policy.py` asserts on the policy node directly, no model in the loop: the ten cases from the spec (what must card under `normal`, what must not, what `autonomous` changes and what it cannot), the fingerprint properties, the floor's edge cases on both Unix and Windows shells, and the NutriShop rules. `tests/test_graph.py` runs the graph with a scripted model: the interrupt fires, a second graph instance on the same SQLite file is sitting at the same card, resume executes the tool, a denial's reason reaches the model. `tests/test_nutrishop_graph.py` does the same for the store.
 
 ```bash
-pytest -q     # 38 passed
+pytest -q     # 57 passed
 ```
 
 ## Deliberately left out
@@ -101,4 +99,4 @@ The security kernel, taint tracking, canaries and the threat engine; memory and 
 
 ## LangSmith
 
-_Trace link coming: the interrupt and the resume as two runs on one thread._ Tracing is env-vars only (`LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`); see `.env.example`.
+Tracing is env-vars only (`LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`); see `.env.example`. Nothing in the code changes when they are set. An interrupted run and its resume show up as two runs on the same thread.
