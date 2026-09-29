@@ -99,4 +99,9 @@ The security kernel, taint tracking, canaries and the threat engine; memory and 
 
 ## LangSmith
 
-Tracing is env-vars only (`LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`); see `.env.example`. Nothing in the code changes when they are set. An interrupted run and its resume show up as two runs on the same thread.
+One NutriShop restock, traced as two runs on the thread `reorder-trace`:
+
+- **[Run 1: the process stops at the first card](https://smith.langchain.com/public/89edbab7-2e83-4c9f-9559-18c92c559cf3/r).** Low stock is found, three POs are drafted without a card (profile `autonomous`), and the model asks to send all three. The run ends at the checkpointed interrupt. The process exited there.
+- **[Run 2: a new process resumes from the checkpoint](https://smith.langchain.com/public/d40c0b35-cbde-446e-8ab2-181537afb394/r).** `--resume` loads the same card (same fingerprint). Optimum is approved, Ghost is denied with *"Ghost raised prices last month, hold that one until I call them"*, and NOW is approved. The denial reason reaches the model word for word in the tool message, and the final summary holds the Ghost PO and quotes it.
+
+Tracing is env-vars only (`LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`); see `.env.example`. Nothing in the code changes when they are set.
